@@ -1,8 +1,13 @@
 # OSINT-D2
 
-```
-	 ____  ____ ___ _   _ _____     ____  ____
-	/ __ \/ __ `__ \ | | |_   _|   / __ \/ __ \
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](#instalación)
+[![Poetry](https://img.shields.io/badge/Poetry-enabled-60A5FA?logo=poetry&logoColor=white)](#instalación)
+[![DeepSeek](https://img.shields.io/badge/AI-DeepSeek%20(OpenAI%20compatible)-111827?logo=openai&logoColor=white)](#ia--deep-analyze)
+[![License](https://img.shields.io/badge/License-MIT-success)](LICENSE)
+
+```text
+   ____  ____ ___ _   _ _____     ____  ____
+  / __ \/ __ `__ \ | | |_   _|   / __ \/ __ \
  / / / / / / / / / | | | | |    / / / / / / /
 / /_/ / /_/ /_/ /| |_| | | |   / /_/ / /_/ /
 \____/\__,_|\__,_| \__,_| |_|   \____/\____/
@@ -10,12 +15,7 @@
 
 **Advanced Identity Correlation & Cognitive Profiling Tool**
 
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](#instalación)
-[![Poetry](https://img.shields.io/badge/Poetry-enabled-60A5FA?logo=poetry&logoColor=white)](#instalación)
-[![DeepSeek](https://img.shields.io/badge/AI-DeepSeek%20(OpenAI%20compatible)-111827?logo=openai&logoColor=white)](#ia--deep-analyze)
-[![License](https://img.shields.io/badge/License-TBD-lightgrey)](#disclaimer)
-
-![Demo Screenshot](demo.png)
+![Demo Screenshot](assets/demo.png)
 
 ## ¿Qué es OSINT-D2?
 
@@ -187,4 +187,4 @@ Esta herramienta es para **uso legítimo, ético y educativo** (p. ej., investig
 - La correlación de identidades y el análisis automatizado pueden producir falsos positivos.
 - El análisis por IA puede ser incorrecto o sesgado: valida siempre con evidencia primaria.
 
-> Nota: Actualmente no hay un archivo de licencia incluido en el repo (License: TBD).
+> Nota: Este repositorio se distribuye bajo licencia MIT. Ver [LICENSE](LICENSE).
