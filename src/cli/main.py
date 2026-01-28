@@ -413,7 +413,8 @@ async def _hunt_async(
 
         # Importante: `console.status()` usa Live internamente. Si vamos a mostrar
         # una barra de progreso (también Live), debemos cerrar el status primero.
-        if human and status_ctx and use_sherlock and usernames and len(usernames) == 1:
+        # Si no, Rich lanza: LiveError("Only one live display may be active at once").
+        if human and status_ctx and use_sherlock and usernames:
             status_ctx.__exit__(None, None, None)
             status_ctx = None
 
@@ -423,14 +424,15 @@ async def _hunt_async(
             if human:
                 # Pre-cuenta rápida (para barra): replica el filtro NSFW básico.
                 total = 0
-                for site_name, info in manifest.items():
-                    if site_name == "$schema":
-                        continue
-                    if not isinstance(info, dict):
-                        continue
-                    if no_nsfw_effective and bool(info.get("isNSFW")):
-                        continue
-                    total += 1
+                for username in usernames:
+                    for site_name, info in manifest.items():
+                        if site_name == "$schema":
+                            continue
+                        if not isinstance(info, dict):
+                            continue
+                        if no_nsfw_effective and bool(info.get("isNSFW")):
+                            continue
+                        total += 1
 
                 progress = Progress(
                     SpinnerColumn(),
@@ -441,6 +443,9 @@ async def _hunt_async(
                     console=console,
                     transient=True,
                 )
+                print(f"[debug] Sherlock: sitios a chequear total: {total}")
+                print(f"[debug] Sherlock: usernames a chequear total: {len(usernames)}")
+
                 with progress:
                     task_id = progress.add_task("Sherlock", total=total)
 
