@@ -443,9 +443,7 @@ async def _hunt_async(
                     console=console,
                     transient=True,
                 )
-                print(f"[debug] Sherlock: sitios a chequear total: {total}")
-                print(f"[debug] Sherlock: usernames a chequear total: {len(usernames)}")
-
+            
                 with progress:
                     task_id = progress.add_task("Sherlock", total=total)
 

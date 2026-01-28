@@ -72,7 +72,6 @@ async def run_sherlock_username(
 
     # Manifest es dict: site_name -> info
     items: list[tuple[str, dict[str, Any]]] = []
-    print(f"[debug] Sherlock: sitios a chequear: {len(items)}")
 
     for site_name, info in manifest.items():
         if site_name == "$schema":
