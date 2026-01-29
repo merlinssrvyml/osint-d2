@@ -80,6 +80,7 @@ async def run_username_sites(
                 try:
                     resp = await client.get(url)
                     text = resp.text or ""
+                   
                     found = _match_found(
                         text=text,
                         status_code=resp.status_code,
@@ -101,7 +102,8 @@ async def run_username_sites(
                         "site_name": site.name,
                         **html_meta,
                     }
-
+                    print(f"[debug] Sherlock: metadata: {metadata}")
+                    
                     return SocialProfile(
                         url=str(resp.url),
                         username=username,

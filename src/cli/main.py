@@ -273,41 +273,90 @@ async def _hunt_async(
     no_nsfw_effective = settings.sites_no_nsfw if no_nsfw is None else no_nsfw
 
     profiles: list[SocialProfile] = []
-
-    if human:
-        status_ctx = console.status("Ejecutando búsqueda (usernames/emails)...", spinner="dots")
-        status_ctx.__enter__()
-    else:
-        status_ctx = None
-    try:
-        async def safe_scan(scanner: object, value: str, *, derived_from: str | None = None) -> SocialProfile:
-            name = scanner.__class__.__name__
-            network = name.removesuffix("Scanner").lower()
-            try:
-                prof = await scanner.scan(value)  # type: ignore[attr-defined]
-                if derived_from and isinstance(prof.metadata, dict):
-                    prof.metadata = {**prof.metadata, "derived_from": derived_from}
-
+    # --- safe_scan debe estar disponible en todo el ámbito ---
+    async def safe_scan(scanner: object, value: str, *, derived_from: str | None = None) -> list[SocialProfile]:
+        name = scanner.__class__.__name__
+        network = name.removesuffix("Scanner").lower()
+        try:
+            prof = await scanner.scan(value)  # type: ignore[attr-defined]
+            profiles: list[SocialProfile] = []
+            # Si el scanner devuelve una lista, la usamos; si no, la envolvemos
+            if isinstance(prof, list):
+                profiles = prof
+            else:
+                profiles = [prof]
+            # Añadir derived_from si corresponde
+            for p in profiles:
+                if derived_from and isinstance(p.metadata, dict):
+                    p.metadata = {**p.metadata, "derived_from": derived_from}
                 # Parche rápido: evita URLs placeholder en X.
-                if isinstance(prof.url, str) and "example.invalid/x/" in prof.url:
-                    prof.url = prof.url.replace("example.invalid/x/", "x.com/")
-                return prof
-            except Exception as exc:
-                # Si falla la request, devuelve igual una URL canónica útil.
-                fallback_url = f"https://{network}.com/{value}"
-                if network == "x":
-                    fallback_url = f"https://x.com/{value}"
-                return SocialProfile(
-                    url=fallback_url,
-                    username=value,
-                    network_name=network,
-                    existe=False,
-                    metadata={"error": str(exc), "scanner": name, "derived_from": derived_from}
-                    if derived_from
-                    else {"error": str(exc), "scanner": name},
-                )
+                if isinstance(p.url, str) and "example.invalid/x/" in p.url:
+                    p.url = p.url.replace("example.invalid/x/", "x.com/")
+            return profiles
+        except Exception as exc:
+            # Si falla la request, devuelve igual una URL canónica útil.
+            fallback_url = f"https://{network}.com/{value}"
+            if network == "x":
+                fallback_url = f"https://x.com/{value}"
+            return [SocialProfile(
+                url=fallback_url,
+                username=value,
+                network_name=network,
+                existe=False,
+                metadata={"error": str(exc), "scanner": name, "derived_from": derived_from}
+                if derived_from
+                else {"error": str(exc), "scanner": name},
+            )]
 
-        if usernames:
+    # --- INICIO: Expansión recursiva universal de usernames/emails ---
+    # Todos los usernames/emails extraídos se buscan en todas las fuentes, hasta agotar combinaciones
+    def extract_extras(perfiles):
+        extra_emails = set()
+        extra_usernames = set()
+        # websites detectados, para futuro uso
+        extra_websites = set()
+        for profile in perfiles:
+            md = profile.metadata if isinstance(profile.metadata, dict) else {}
+            for k in ("other_emails", "emails", "email"):
+                val = md.get(k)
+                if isinstance(val, str):
+                    extra_emails.add(val)
+                elif isinstance(val, list):
+                    extra_emails.update([v for v in val if isinstance(v, str)])
+            for k in ("other_users", "usernames"):
+                val = md.get(k)
+                if isinstance(val, str):
+                    extra_usernames.add(val)
+                elif isinstance(val, list):
+                    extra_usernames.update([v for v in val if isinstance(v, str)])
+            # NO agregar websites como usernames, solo recolectar para futuro uso
+            for k in ("other_websites", "websites", "website"):
+                val = md.get(k)
+                if isinstance(val, str):
+                    extra_websites.add(val)
+                elif isinstance(val, list):
+                    for v in val:
+                        if isinstance(v, str):
+                            extra_websites.add(v)
+        # Limpiamos los sets para evitar duplicados y datos vacíos
+        extra_emails = {e.strip().lower() for e in extra_emails if e and "@" in e}
+        extra_usernames = {u.strip() for u in extra_usernames if u}
+        extra_websites = {w.strip() for w in extra_websites if w}
+        # Por ahora solo devolvemos usernames y emails, pero websites queda listo para futuro
+        return extra_usernames, extra_emails
+
+    # Inicializamos los conjuntos
+    all_usernames = set(usernames or [])
+    all_emails = set(emails or [])
+    scanned_usernames = set()
+    scanned_emails = set()
+    while True:
+        new_usernames = list(all_usernames - scanned_usernames)
+        new_emails = list(all_emails - scanned_emails)
+        if not new_usernames and not new_emails:
+            break
+        # Escanear todos los nuevos usernames
+        if new_usernames:
             username_scanners: list[object] = [
                 GitHubScanner(),
                 GitHubGistScanner(),
@@ -328,19 +377,25 @@ async def _hunt_async(
                 BehanceScanner(),
                 XScanner(),
             ]
-            profiles.extend(await asyncio.gather(*(safe_scan(s, username) for username in usernames for s in username_scanners)))
-
-        if emails:
+            scan_results = await asyncio.gather(*(safe_scan(s, username) for username in new_usernames for s in username_scanners))
+            for result in scan_results:
+                profiles.extend(result)
+            scanned_usernames.update(new_usernames)
+        # Escanear todos los nuevos emails
+        if new_emails:
             email_scanners: list[object] = [
                 GravatarScanner(),
                 GravatarProfileScanner(),
                 OpenPGPKeysScanner(),
                 UbuntuKeyserverScanner(),
             ]
-            profiles.extend(await asyncio.gather(*(safe_scan(s, email) for email in emails for s in email_scanners)))
-
+            scan_results = await asyncio.gather(*(safe_scan(s, email) for email in new_emails for s in email_scanners))
+            for result in scan_results:
+                profiles.extend(result)
+            scanned_emails.update(new_emails)
+            # Si scan_localpart, escanear localparts como usernames
             if scan_localpart:
-                localparts = [email.split("@", 1)[0] for email in emails]
+                localparts = [email.split("@", 1)[0] for email in new_emails]
                 username_scanners2: list[object] = [
                     GitHubScanner(),
                     GitHubGistScanner(),
@@ -361,9 +416,59 @@ async def _hunt_async(
                     BehanceScanner(),
                     XScanner(),
                 ]
-                profiles.extend(
-                    await asyncio.gather(*(safe_scan(s, localpart, derived_from="email_localpart") for localpart in localparts for s in username_scanners2))
-                )
+                scan_results = await asyncio.gather(*(safe_scan(s, localpart, derived_from="email_localpart") for localpart in localparts for s in username_scanners2))
+                for result in scan_results:
+                    profiles.extend(result)
+                all_usernames.update(localparts)
+        # Extraer nuevos usernames/emails de los perfiles obtenidos
+        extra_usernames, extra_emails = extract_extras(profiles)
+        all_usernames.update(extra_usernames)
+        all_emails.update(extra_emails)
+    usernames = list(all_usernames)
+    emails = list(all_emails)
+    # --- FIN: Expansión recursiva universal de usernames/emails ---
+
+    if human:
+        status_ctx = console.status("Ejecutando búsqueda (usernames/emails)...", spinner="dots")
+        status_ctx.__enter__()
+    else:
+        status_ctx = None
+    try:
+        async def safe_scan(scanner: object, value: str, *, derived_from: str | None = None) -> list[SocialProfile]:
+            name = scanner.__class__.__name__
+            network = name.removesuffix("Scanner").lower()
+            try:
+                prof = await scanner.scan(value)  # type: ignore[attr-defined]
+                profiles: list[SocialProfile] = []
+                # Si el scanner devuelve una lista, la usamos; si no, la envolvemos
+                if isinstance(prof, list):
+                    profiles = prof
+                else:
+                    profiles = [prof]
+                # Añadir derived_from si corresponde
+                for p in profiles:
+                    if derived_from and isinstance(p.metadata, dict):
+                        p.metadata = {**p.metadata, "derived_from": derived_from}
+                    # Parche rápido: evita URLs placeholder en X.
+                    if isinstance(p.url, str) and "example.invalid/x/" in p.url:
+                        p.url = p.url.replace("example.invalid/x/", "x.com/")
+                return profiles
+            except Exception as exc:
+                # Si falla la request, devuelve igual una URL canónica útil.
+                fallback_url = f"https://{network}.com/{value}"
+                if network == "x":
+                    fallback_url = f"https://x.com/{value}"
+                return [SocialProfile(
+                    url=fallback_url,
+                    username=value,
+                    network_name=network,
+                    existe=False,
+                    metadata={"error": str(exc), "scanner": name, "derived_from": derived_from}
+                    if derived_from
+                    else {"error": str(exc), "scanner": name},
+                )]
+
+
 
         if use_site_lists:
             if usernames:
@@ -375,6 +480,7 @@ async def _hunt_async(
                         p = fallback
                 if p and p.exists():
                     sites_file = load_username_sites(p)
+                    print(f"[debug] Username site-lists: cargados {len(sites_file.sites)} sitios desde {p}")
                     profiles.extend(
                         await run_username_sites(
                             usernames=usernames,
@@ -476,6 +582,7 @@ async def _hunt_async(
         if status_ctx:
             status_ctx.__exit__(None, None, None)
 
+
     profiles = _dedupe_profiles(profiles)
 
     if strict and usernames:
@@ -485,12 +592,71 @@ async def _hunt_async(
     # Se ejecuta antes del análisis IA para aportar contexto adicional.
     await enrich_profiles_from_html(profiles=profiles, settings=settings, max_concurrency=min(20, max_concurrency))
 
+
+    # --- INICIO: Recolección de otros emails, usuarios y websites ---
+    # Buscamos en los metadatos de los perfiles campos adicionales para ampliar la búsqueda.
+    extra_emails = set()
+    extra_usernames = set()
+    for profile in profiles:
+        md = profile.metadata if isinstance(profile.metadata, dict) else {}
+        for k in ("other_emails", "emails", "email"):
+            val = md.get(k)
+            if isinstance(val, str):
+                extra_emails.add(val)
+            elif isinstance(val, list):
+                extra_emails.update([v for v in val if isinstance(v, str)])
+        for k in ("other_users", "usernames"):
+            val = md.get(k)
+            if isinstance(val, str):
+                extra_usernames.add(val)
+            elif isinstance(val, list):
+                extra_usernames.update([v for v in val if isinstance(v, str)])
+        for k in ("other_websites", "websites", "website"):
+            val = md.get(k)
+            if isinstance(val, str):
+                if not val.startswith("http"):
+                    extra_usernames.add(val)
+            elif isinstance(val, list):
+                for v in val:
+                    if isinstance(v, str) and not v.startswith("http"):
+                        extra_usernames.add(v)
+
+    # Limpiamos los sets para evitar duplicados y datos vacíos
+    extra_emails = {e.strip().lower() for e in extra_emails if e and "@" in e}
+    extra_usernames = {u.strip() for u in extra_usernames if u}
+
+    # Agregamos los datos extra a las listas originales si no estaban
+    if emails is not None:
+        emails = list(set(emails) | extra_emails)
+    elif extra_emails:
+        emails = list(extra_emails)
+    if usernames is not None:
+        usernames = list(set(usernames) | extra_usernames)
+    elif extra_usernames:
+        usernames = list(extra_usernames)
+    # --- FIN: Recolección de otros emails, usuarios y websites ---
+
     target_label = "/".join([v for v in ["/".join(usernames) if usernames else None, "/".join(emails) if emails else None] if v])
     person = PersonEntity(target=target_label, profiles=profiles)
 
     if human:
-        table = build_profiles_table()
+        # Ordena: primero los perfiles cuyo username es el principal (primer username buscado), luego los extras
+        main_usernames = set()
+        if usernames:
+            main_usernames.add(usernames[0].lower())
+        # Perfiles principales primero, luego el resto
+        main_profiles = []
+        extra_profiles = []
         for profile in person.profiles:
+            if profile.username and profile.username.lower() in main_usernames:
+                main_profiles.append(profile)
+            else:
+                extra_profiles.append(profile)
+        # Opcional: para que los extras también se agrupen por username
+        main_profiles.sort(key=lambda p: (p.username or "").lower())
+        extra_profiles.sort(key=lambda p: (p.username or "").lower())
+        table = build_profiles_table()
+        for profile in main_profiles + extra_profiles:
             err = ""
             if isinstance(profile.metadata, dict):
                 maybe_err = profile.metadata.get("error")
@@ -599,7 +765,7 @@ async def _scan_email_async(
                 GitLabScanner(),
                 KeybaseScanner(),
                 DevToScanner(),
-                MediumScanner(),
+                #MediumScanner(),
                 NpmScanner(),
                 ProductHuntScanner(),
                 RedditScanner(),
@@ -989,9 +1155,9 @@ def hunt(
         "-e",
         help="Emails objetivo (lista separada por comas).",
     ),
-    deep_analyze: bool = typer.Option(
+    ai: bool = typer.Option(
         True,
-        "--deep-analyze/--no-deep-analyze",
+        "--ai/--noai",
         help="Ejecuta análisis cognitivo con IA (DeepSeek) sobre las evidencias.",
     ),
     scan_localpart: bool = typer.Option(
@@ -1079,7 +1245,7 @@ def hunt(
         _hunt_async(
             usernames=usernames if usernames else None,
             emails=normalized_emails if normalized_emails else None,
-            deep_analyze=deep_analyze,
+            deep_analyze=ai,
             export_pdf=export_pdf,
             export_json=export_json,
             output_format=output_format,
