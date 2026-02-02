@@ -165,7 +165,14 @@ def _print_profiles_table(*, person: PersonEntity, primary_usernames: list[str])
     _console.print(table)
 
 
-def _handle_exports(*, person: PersonEntity, console: Console, export_pdf: bool, export_json: bool) -> None:
+def _handle_exports(
+    *,
+    person: PersonEntity,
+    console: Console,
+    export_pdf: bool,
+    export_json: bool,
+    language: Language,
+) -> None:
     if not export_pdf and not export_json:
         return
 
@@ -174,13 +181,13 @@ def _handle_exports(*, person: PersonEntity, console: Console, export_pdf: bool,
     if export_pdf:
         try:
             out_path = Path("reports") / f"{safe_name}.pdf"
-            export_person_pdf(person=person, output_path=out_path)
+            export_person_pdf(person=person, output_path=out_path, language=language)
             console.print(f"\n[green]PDF generated:[/green] {out_path}")
         except Exception as exc:
             console.print(f"\n[red]PDF export failed:[/red] {exc}")
             html_path = Path("reports") / f"{safe_name}.html"
             try:
-                export_person_html(person=person, output_path=html_path)
+                export_person_html(person=person, output_path=html_path, language=language)
                 console.print(f"[yellow]Fallback HTML generated:[/yellow] {html_path}")
             except Exception as html_exc:
                 console.print(f"[red]HTML export failed:[/red] {html_exc}")
@@ -247,7 +254,7 @@ async def _hunt_async(
             close_status()
             progress = Progress(
                 SpinnerColumn(),
-                TextColumn("[cyan]Sherlock[/cyan] {task.completed}/{task.total} ({task.percentage:>3.0f}%)"),
+                TextColumn("[bright_green]Sherlock[/bright_green] {task.completed}/{task.total} ({task.percentage:>3.0f}%)"),
                 BarColumn(bar_width=None),
                 TimeElapsedColumn(),
                 TimeRemainingColumn(),
@@ -312,6 +319,7 @@ async def _hunt_async(
         console=console,
         export_pdf=export_pdf,
         export_json=export_json,
+        language=language,
     )
 
     if output_format == OutputFormat.json:
@@ -365,6 +373,7 @@ async def _scan_async(
         console=console,
         export_pdf=export_pdf,
         export_json=export_json,
+        language=language,
     )
 
     if output_format == OutputFormat.json:
@@ -423,6 +432,7 @@ async def _scan_email_async(
         console=console,
         export_pdf=export_pdf,
         export_json=export_json,
+        language=language,
     )
 
     if output_format == OutputFormat.json:

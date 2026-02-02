@@ -12,6 +12,7 @@ from rich.table import Table
 from adapters.http_client import build_async_client
 from adapters.report_exporter import export_person_pdf
 from core.config import AppSettings
+from core.domain.language import Language
 from core.domain.models import PersonEntity
 
 app = typer.Typer(no_args_is_help=True, help="Environment diagnostics and configuration checks.")
@@ -34,7 +35,7 @@ def _check_pdf() -> tuple[bool, str]:
     try:
         tmp = Path("reports") / "_doctor_test.pdf"
         person = PersonEntity(target="doctor", profiles=[])
-        export_person_pdf(person=person, output_path=tmp)
+        export_person_pdf(person=person, output_path=tmp, language=Language.ENGLISH)
         try:
             tmp.unlink(missing_ok=True)
         except Exception:
@@ -51,7 +52,7 @@ def run() -> None:
     settings = AppSettings()
 
     table = Table(title="OSINT-D2 Doctor")
-    table.add_column("Check", style="cyan", no_wrap=True)
+    table.add_column("Check", style="bright_green", no_wrap=True)
     table.add_column("Status", style="white")
     table.add_column("Details", style="dim")
 
